@@ -1,0 +1,427 @@
+<template>
+  <div class="throughLog" v-loading.fullscreen="loading">
+    <div class="search-wrap box-shadow">
+      <div class="item">
+        <label>{{$t('message.TABLE.time')}}：</label>
+        <el-date-picker
+          v-model="searchData.time"
+          size="mini"
+          type="daterange"
+          align="right"
+          unlink-panels
+          range-separator="-"
+          :start-placeholder="$t('message.INPUT.startTime')"
+          :end-placeholder="$t('message.INPUT.endTime')"
+          :picker-options="pickerOptions">
+        </el-date-picker>
+      </div>
+      <div class="item">
+        <el-button round size="mini" @click="handleSearch" type="primary">{{$t('message.BUTTON.search')}}</el-button>
+        <el-button round size="mini" @click="exportFn" type="primary">{{$t('message.BUTTON.export')}}</el-button>
+      </div>
+    </div>
+    <div class="data-content box-shadow">
+      <div class="data-flex">
+        <div class="tree-wrap">
+          <TreeTitle></TreeTitle>
+          <el-tree :data="treeData" check-on-click-node :highlight-current="showLight" :props="defaultProps" @node-click="handleNodeClick"></el-tree>
+          <!-- <el-tree :data="treeData" show-checkbox :props="defaultProps" @check-change="handleCheckChange"></el-tree> -->
+        </div>
+        <div class="table-content">
+          <div class="table-wrap">
+            <p class="title">{{$t('message.THROUGHLOG.name')}}</p>
+            <el-table
+              :data="tableData"
+              header-row-class-name="header-row"
+              max-height="516px"
+              size="mini"
+              @row-click="handleClickRow"
+              style="width: 100%">
+              <el-table-column
+                prop="username"
+                align="center"
+                :label="$t('message.TABLE.name')">
+              </el-table-column>
+              <el-table-column
+                prop="department"
+                align="center"
+                :label="$t('message.TABLE.department')">
+              </el-table-column>
+              <el-table-column
+                prop="empno"
+                align="center"
+                :label="$t('message.TABLE.empno')">
+              </el-table-column>
+              <el-table-column
+                prop="passTime"
+                align="center"
+                :label="$t('message.TABLE.recTime')">
+              </el-table-column>
+              <el-table-column
+                prop="deviceName"
+                align="center"
+                :label="$t('message.TABLE.sites')">
+              </el-table-column>
+              <el-table-column
+                prop="deviceName"
+                align="center"
+                :label="$t('message.CAMERA.left.p4')">
+                <template slot-scope="scope">
+                  <span>{{formatKey(scope.row.recType, recType, 'name', 'val')}}</span>
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="detail"
+                align="center"
+                :label="$t('message.TABLE.operate')">
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+        <!-- <div class="photo-wrap">
+          <div class="avatar">
+            <el-image
+              v-if="currPerImg"
+              style="width: auto; height: 100%"
+              :preview-src-list="[currPerImg]"
+              :src="currPerImg" >
+            </el-image>
+          </div>
+        </div> -->
+      </div>
+      <div class="table-pagination">
+        <el-pagination
+          background
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+          :current-page="pageNum"
+          size="mini"
+          :page-sizes="[10, 30, 50, 100]"
+          :page-size="pageSize"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total">
+        </el-pagination>
+      </div>
+    </div>
+  </div>
+</template>
+<script>
+const imgBase64 = 'data:image/jpg;base64,';
+import request from "@/axios/axios";
+import moment from 'moment';
+export default {
+  name: 'throughLog',
+  data() {
+    return {
+      defaultProps: {
+        children: 'last',
+        label: 'name'
+      },
+      selectChildId: '',
+      showLight: true,
+      isClick: false,
+      loading: false,
+      pageNum: 1,
+      pageSize: 10,
+      total: 0,
+      searchData: {
+        people: { // 工人
+          val: '',
+          data: []
+        },
+        time: [], // 时间
+        tableType: { // 报表类型
+          val: '',
+          data: []
+        }
+      },
+      pickerOptions: {
+        // disabledDate(time) {
+        //   return time.getTime() > Date.now();
+        // },
+        shortcuts: [{
+          text: '今天',
+          onClick(picker) {
+            picker.$emit('pick', new Date());
+          }
+        }, {
+          text: '昨天',
+          onClick(picker) {
+            const date = new Date();
+            date.setTime(date.getTime() - 3600 * 1000 * 24);
+            picker.$emit('pick', date);
+          }
+        }, {
+          text: '一周前',
+          onClick(picker) {
+            const date = new Date();
+            date.setTime(date.getTime() - 3600 * 1000 * 24 * 7);
+            picker.$emit('pick', date);
+          }
+        }]
+      },
+      recType: [
+        {name: 'face', val: '1'},
+        {name: 'eye', val: '2'},
+        {name: 'eyeAndFace', val: '3'},
+        {name: 'pwd', val: '4'},
+      ],
+      tableData: [],
+      ids: [],
+      currPerImg: '',
+    }
+  },
+  created() {
+    let time = new Date();
+    let lastDay = time*1 - 24*60*60*1000;
+    this.searchData.time = [new Date(lastDay), time];
+  },
+  mounted() {
+    this.getList();
+    this.treeBlur();
+    // this.handleClickRow()
+    // console.log(this.treeData)
+  },
+  computed: {
+    treeData() {
+      return this.$store.state.treeData;
+    }
+  },
+  watch: {
+    'selectChildId': function(n, o) {
+      this.handleSearch();
+    }
+  },
+  methods: {
+    // 部门失焦
+    treeBlur() {
+      const vm = this;
+      document.onclick = function(e) {
+        vm.selectChildId = '';
+        vm.showLight = false;
+      }
+    },
+    // 格式化字段
+    formatKey(val, data, key, check_key) {
+      let text = '--';
+      if((val||val === 0)&&data&&key){
+        data.map(item => {
+          if((check_key ? item[check_key] : item.val) == val){
+            text = item[key];
+          }
+        })
+      }
+      if(text === '--'){
+        return text;
+      }else{
+        return this.$t('message.CAMERA.type.'+text);
+      }
+    },
+    handleNodeClick(data) {
+      this.selectChildId = data.id;
+      this.showLight = true;
+    },
+    handleCheckChange(data, checked, indeterminate) {
+      let {level, id, list, $treeNodeId} = data;
+      const vm = this;
+      vm.ids[$treeNodeId] = [];
+      if(Number(level) === 1){
+        if(checked){
+          if(list.length > 0){
+            list.map(item => {
+              vm.ids[$treeNodeId].push(item.id);
+              // if(item.list.length > 0){
+              //   item.list.map(l => {
+              //     vm.ids[$treeNodeId].push(l.id);
+              //   })
+              // }else{
+              //   vm.ids[$treeNodeId].push(item.id);
+              // }
+            })
+          }else{
+            vm.ids[$treeNodeId].push(id);
+          }
+        }else{
+          vm.ids[$treeNodeId] = [];
+        }
+      }
+      if(Number(level) === 2) {
+        // if(list.length === 0){
+          let index = vm.ids[$treeNodeId].indexOf(id);
+          if(checked){
+            if(index < 0){
+              vm.ids[$treeNodeId].push(id);
+            }
+          }else{
+            vm.ids[$treeNodeId].splice(index, 1)
+          }
+        // }
+      }
+      // if(Number(level) === 3){
+      //   let index = vm.ids[$treeNodeId].indexOf(id);
+      //   if(checked){
+      //     if(index < 0){
+      //       vm.ids[$treeNodeId].push(id);
+      //     }
+      //   }else{
+      //     vm.ids[$treeNodeId].splice(index, 1)
+      //   }
+      // }
+      // console.log(vm.ids[$treeNodeId])
+      // console.log(vm.ids)
+      // console.log($treeNodeId);
+      // console.log(data, checked, indeterminate);
+    },
+    handleSearch() {
+      this.getList();
+    },
+    exportFn() {
+      const vm = this;
+      let ROOT_URL = '';
+      let {time} = this.searchData;
+      let startAt = '',
+        endAt = '';
+      if(time) {
+        if (time.toString() !== '') {
+          startAt = new Date(time[0])*1;
+          endAt = new Date(time[1])*1;
+        }
+      }
+      if(!startAt || !endAt) {
+        this.$message({
+          message: this.$t('message.MESSAGE.selectTime'),
+          type: 'error',
+          duration: 1500,
+        })
+        return
+      }
+      if(process.env.NODE_ENV === 'development'){
+        ROOT_URL = root_config.development; // 开发环境
+      }else{
+        ROOT_URL = root_config.product; // 服务器环境
+      }
+      window.open(
+        ROOT_URL+'/recognition/exportAccessList?departmentId='+vm.selectChildId
+        +'&sysStartAt='+(startAt ? moment(startAt).format('YYYY-MM-DD') : '')
+        +'&sysEndAt='+(endAt ? moment(endAt).format('YYYY-MM-DD') : '')
+      );
+    },
+    handleSizeChange(val) {
+      this.pageNum = 1;
+      this.pageSize = val;
+      this.getList();
+      // console.log(`每页 ${val} 条`);
+    },
+    handleCurrentChange(val) {
+      this.pageNum = val;
+      this.getList();
+      // console.log(`当前页: ${val}`);
+    },
+    // 获取图片
+    handleClickRow(row, column, event) {
+      return;
+      const vm = this;
+      request({
+        url: '/gwuser/picture',
+        param: {
+          id: row.id ? row.id : 1
+        },
+        method: 'get',
+        onError: err => {
+          // vm.loading = false;
+          // vm.isClick = false;
+        },
+        vm,
+      }).then(res => {
+        let code = res.code;
+        // console.log(res)
+        // vm.loading = false;
+        if(code === 200){
+          vm.currPerImg = res.data ? imgBase64 + res.data : '';
+        }
+      });
+      // console.log(row, column, event);
+    },
+    getList() {
+      const vm = this;
+      vm.loading = true;
+      let {time} = this.searchData;
+      let startAt = '',
+        endAt = '';
+      if(time) {
+        if (time.toString() !== '') {
+          startAt = new Date(time[0])*1;
+          endAt = new Date(time[1])*1;
+        }
+      }
+      request({
+        url: '/recognition/accessList',
+        // param: {},
+        param: {
+          pageNum: vm.pageNum,
+          pageSize: vm.pageSize,
+          departmentId: vm.selectChildId || '',
+          // name,
+          sysStartAt: startAt ? moment(startAt).format('YYYY-MM-DD') : '',
+          sysEndAt: endAt ? moment(endAt).format('YYYY-MM-DD') : '',
+        },
+        method: 'post',
+        onError: err => {
+          vm.loading = false;
+          // vm.isClick = false;
+        },
+        vm,
+      }).then(res => {
+        let code = res.code;
+        // console.log(res)
+        vm.loading = false;
+        if(code === 200){
+          let data = res.data;
+          // vm.pageNum = data.pageNum;
+          // vm.pageSize = data.pageSize;
+          vm.total = data ? data.total : 0;
+          vm.tableData = data ? data.query : [];
+        }
+      });
+    },
+  },
+}
+</script>
+<style lang="scss">
+.throughLog{
+  .el-form-item{
+    margin-bottom:10px;
+  }
+  .el-dialog__body{
+    padding: 10px 20px;
+  }
+  .el-select{
+    width:100%;
+  }
+  .el-form-item__error{
+    padding-top:0;
+  }
+}
+</style>
+<style lang="scss" scoped>
+.throughLog{
+  .throughLog-item{
+    display:flex;
+    .upload-close-file{
+      position: absolute;
+      right: 10px;
+      z-index: 10;
+      top: 14px;
+      color: #fff;
+      cursor: pointer;
+    }
+    >div{
+      flex:1;
+    }
+    .text{
+      margin:0 10px;
+    }
+  }
+}
+</style>
+
