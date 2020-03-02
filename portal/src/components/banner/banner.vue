@@ -23,18 +23,18 @@ import "swiper/css/swiper.css";
 const banner1 = require('@/assets/img/banner/banner1.png')
 const banner2 = require('@/assets/img/banner/banner2.png')
 const banner3 = require('@/assets/img/banner/banner4.jpg')
-import solutionList from '../solution/solutionList'
+import productList from '../product/productList'
 export default {
   name: 'banner',
   data() {
     return {
       bannerlist: [
-        {img: banner3, url: 'solutionInfo', showCur: true},
+        {img: banner3, url: 'productInfo', showCur: true},
         {img: banner1, url: 'banner1', showCur: false},
         {img: banner2, url: 'banner2', showCur: false},
       ],
-      solutionList: solutionList,
-      solutionId: '',
+      productList: productList,
+      productId: '',
     }
   },
   created() {
@@ -48,15 +48,15 @@ export default {
   methods: {
     // 获取解决方案id
     getId() {
-      let item = this.solutionList.filter(v => v.title === '智慧安防')[0];
-      this.solutionId = item.id;
+      let item = this.productList.filter(v => v.name === 'S320-T1虹膜测温门禁')[0];
+      this.productId = item.id;
     },
     toPage(item) {
-      if(item.url === 'solutionInfo') {
+      if(item.url === 'productInfo') {
         this.$router.push({
-          name: 'solutionInfo',
+          name: 'productInfo',
           query: {
-            id: this.solutionId
+            id: this.productId
           }
         })
       }
